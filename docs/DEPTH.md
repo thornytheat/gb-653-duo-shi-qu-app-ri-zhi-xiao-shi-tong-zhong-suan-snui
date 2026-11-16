@@ -30,6 +30,13 @@
 | TRAP-16 | 真实边界输入 | 朴素处理会错分 | 保留证据并稳定裁决 | `app/modules/m3_events/core.py` | `tests/test_m3_events.py::test_trap_2` |
 | TRAP-23 | 真实边界输入 | 朴素处理会错分 | 保留证据并稳定裁决 | `app/modules/m4_buckets/core.py` | `tests/test_m4_buckets.py::test_trap_2` |
 
+        ## 时区更正设计（M4 扩展）
+
+        - 决定模型：`corrections` 表按 (service, version) 留存全部历次决定与理由，最新为 ACTIVE，历史为 SUPERSEDED；解析时取 `effective_from <= 本地时间` 中版本最高者，历史版本仍管辖其生效范围。
+        - 复现保证：批次结果连同原日志、逐条证据（时区、fold、决定版本）封存于 `bucket_batches`，digest 主键幂等，重试复用原 `run_id`。
+        - 并发与故障：`add_correction` 在 `BEGIN IMMEDIATE` 事务内校验 `base_version`，过期拒绝 `STALE_VERSION`；重算按块写 `bucket_checkpoints` 断点，中断凭同一令牌续跑；`commit_batch` 同事务完成批次落库、当前指针切换与断点清理，失败整体回滚沿用旧版。
+        - 测试：`tests/test_m4_correction.py` 覆盖跳时/重叠隔离、生效范围、过期拒绝、幂等重试、中断续跑、切换失败与历史复现。
+
         ## 对账规则
 
         - 输入记录数 = 有效记录数 + 隔离记录数 + 空记录数。
